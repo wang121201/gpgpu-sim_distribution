@@ -1,0 +1,11 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Setup Environment",
+            "type": "shell",
+            "command": "source ~/workspace/accel-sim/setup_environment && sleep 1s",
+            "problemMatcher": []
+        }
+    ]
+}

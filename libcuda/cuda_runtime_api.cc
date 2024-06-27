@@ -1735,6 +1735,7 @@ cudaDeviceGetAttributeInternal(int *value, enum cudaDeviceAttr attr, int device,
       case 17:
       case 18:
       case 19:
+      case 20:
         *value = 0;
         break;
       case 21:
