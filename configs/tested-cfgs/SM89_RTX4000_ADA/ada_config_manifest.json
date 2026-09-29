@@ -1,0 +1,87 @@
+{
+  "status": "calibrated_12_case_held_out_validated",
+  "calibration": {
+    "method": "controlled single-variable ablation on this config as the only baseline, 12 cases (8 train + 4 held-out), each with an NCU hardware reference aligned by 1-based launch ordinal + full demangled name + grid/block shape",
+    "selected_candidate": "C3_idx0_Jl2",
+    "diff_from_this_config": {
+      "-gpgpu_memory_partition_indexing": {"from": "2", "to": "0"},
+      "-gpgpu_l2_rop_latency": {"from": "187", "to": "237"},
+      "-dram_latency": {"from": "254", "to": "324"}
+    },
+    "accuracy_cycles_mape_percent": {
+      "train": 7.28,
+      "held_out": 8.36,
+      "all": 7.64,
+      "max": 20.37,
+      "train_held_out_gap": 1.07
+    },
+    "accuracy_counters": {
+      "note": "warp_instructions, l2_read_sectors and l2_read_hits match hardware exactly (0.00% bias) on all 12 cases",
+      "cycles_bias_percent": -5.42
+    },
+    "baseline_this_config_mape_percent": {
+      "train": 16.80,
+      "held_out": 28.25,
+      "all": 20.62,
+      "max": 45.16
+    },
+    "known_limitations": [
+      "The selected l2_rop_latency=237 / dram_latency=324 are the official tuner residual-stage medians, NOT an end-to-end optimum: a sensitivity sweep over 12 cases each finds lower MAPE at l2=250 (7.03%) and dram=360/400 (6.49%/6.48%). The difference is not significant at n=12, and dram=400 degrades held-out to 10.00%, so the selection was kept.",
+      "All candidates share one worst case, l2hold_m16_p4_b192_t256_i4, stuck at about +20%. This is a structural modelling gap that latency tuning cannot fix.",
+      "indexing=0 is a compensating approximation, not a claim that Ada hardware uses linear partition mapping. Real Ada hashes; the simulator's IPoly implementation with this address-bit layout over-camps partitions and inflates cycles, so indexing=0 removes that simulator-side artefact. The physical mapping remains unknown."
+    ],
+    "report": "experiments/ada_calibration_20260922/ACCURACY_REPORT_zh.md",
+    "evidence": "experiments/ada_calibration_20260922/comparisons/ablation_matrix_20260927.json"
+  },
+  "config_name": "RTX4000ADA-SASS",
+  "framework_commit": "d930ad6d02c09bb56867132583735aba0389cff4",
+  "backend_commit": "91880c53383d5a6a6742bfb1be2c5f34e39c7871",
+  "hardware": {
+    "name": "NVIDIA RTX 4000 Ada Generation",
+    "major": 8,
+    "minor": 9,
+    "sm_count": 48,
+    "l2_bytes": 41943040,
+    "memory_bus_bits": 160,
+    "memory_clock_khz": 9001000,
+    "core_clock_khz": 2175000,
+    "max_threads_sm": 1536,
+    "max_blocks_sm": 24,
+    "regs_sm": 65536,
+    "shared_sm": 102400,
+    "shared_block_optin": 101376,
+    "total_memory": 20900347904
+  },
+  "model": {
+    "sm_clock_mhz": 2175.0,
+    "dram_command_clock_mhz": 4500.5,
+    "peak_dram_bandwidth_gb_s": 360.04,
+    "l2_bytes": 41943040,
+    "l2_sets_per_slice": 1024,
+    "l2_ways": 16,
+    "controllers": 10,
+    "subpartitions_per_controller": 2
+  },
+  "notes": [
+    "EXPERIMENTAL RTX4000 Ada migration from official SM86_RTX3070; not validated/tuned.",
+    "SM/register/occupancy/L2/memory-clock values come from cudaGetDeviceProperties JSON.",
+    "Core frequency must match the fixed hardware profiling clock; CUDA max clock alone is not evidence of actual clock.",
+    "Interconnect and L2 clocks are approximated by the SM clock as in the RTX3070 baseline.",
+    "16-bit controllers and two L2 subpartitions/controller are model assumptions, not measured topology.",
+    "L2 capacity is exact; 16-way organization and XOR set hashing are unvalidated approximations.",
+    "L2 uses X (XOR), since inherited P/IPOLY only supports 16/32/64 sets, not 1024.",
+    "Partition hashing stays 2: IPOLY over next-power-of-two then modulo 20; physical Ada mapping is unknown. NOTE: the calibrated configuration changes this to 0 (see the calibration block above); this shipped file still carries the official value.",
+    "Do not use indexing=6 here: its IPOLY group count is 4, unsupported by the current hashing.cc.",
+    "All FU latencies/initiation, tensor timing, DRAM timings, cache latencies, queues and launch latency are inherited and uncalibrated.",
+    "Power modeling is disabled: no RTX4000 Ada AccelWattch power model is claimed.",
+    "No TMA/WGMMA/Hopper behavior is enabled. Unknown trace opcodes remain fatal.",
+    "Ada limits: https://docs.nvidia.com/cuda/ada-tuning-guide/index.html",
+    "Official RTX4000 specifications: https://www.nvidia.com/content/dam/en-zz/Solutions/products/workstations/nvidia-rtx-4000-datasheet.pdf",
+    "Shared Ampere/Ada opcode documentation: https://docs.nvidia.com/cuda/archive/12.8.0/cuda-binary-utilities/index.html#nvidia-ampere-gpu-and-ada-instruction-set"
+  ],
+  "files": {
+    "gpgpusim.config": "b9a038103160d212b9d3fdf8eb3d44a2add32999f2fd7e71d97dbc62a9900b1e",
+    "trace.config": "9f57b875d0786e13590fa977afe3432f238ca3a1ce788efc315d40989d8d5fe1",
+    "ada_opcode.h": "ccfda5f9a90e04d2a79dff026bbdf3ad9dccf223d1acb3d48d77eb60e622152b"
+  }
+}
