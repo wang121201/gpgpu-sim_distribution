@@ -4879,6 +4879,54 @@ void shader_core_ctx::warp_exit(unsigned warp_id) {
   if (done) m_barriers.warp_exit(warp_id);
 }
 
+// Local diagnostic for gpgpu_sim::deadlock_check().
+void shader_core_ctx::dump_barriers() {
+  m_barriers.dump();
+  for (unsigned w = 0; w < get_config()->max_warps_per_shader; w++) {
+    if (m_warp[w]->done_exit()) continue;
+    printf(
+        "GPGPU-Sim uArch DEADLOCK:    warp %u pc=0x%llx completed=%u "
+        "waiting=%d at_barrier=%d at_membar=%d n_atomic=%d "
+        "functional_done=%d\n",
+        w, (unsigned long long)m_warp[w]->get_pc(),
+        m_warp[w]->get_n_completed(), (int)m_warp[w]->waiting(),
+        (int)warp_waiting_at_barrier(w), (int)warp_waiting_at_mem_barrier(w),
+        (int)m_warp[w]->get_n_atomic(), (int)m_warp[w]->functional_done());
+    m_scoreboard->printWarpPendings(w);
+    printf(
+        "GPGPU-Sim uArch DEADLOCK:      gates now: in_pipeline=%d "
+        "at_barrier=%d stores_done=%d pending_writes=%d\n",
+        (int)m_warp[w]->inst_in_pipeline(),
+        (int)m_barriers.warp_waiting_at_barrier(w),
+        (int)m_warp[w]->stores_done(),
+        (int)m_scoreboard->pendingWrites(w));
+    printf(
+        "GPGPU-Sim uArch DEADLOCK:      completed=%u warp_size=%u "
+        "still_active_lanes=",
+        m_warp[w]->get_n_completed(), m_config->warp_size);
+    for (unsigned t = 0; t < m_config->warp_size; t++)
+      if (m_warp[w]->test_active(t)) printf("%u,", t);
+    printf("\n");
+    printf("GPGPU-Sim uArch DEADLOCK:      trace_exhausted=%d\n",
+           (int)m_warp[w]->trace_exhausted());
+    printf(
+        "GPGPU-Sim uArch DEADLOCK:      stores_outstanding=%u "
+        "tma_loads_outstanding=%u\n",
+        m_warp[w]->get_stores_outstanding(),
+        m_warp[w]->get_tma_loads_outstanding());
+  }
+  printf(
+      "GPGPU-Sim uArch DEADLOCK:  core %u last_retire_check_cycle=%llu "
+      "cycle_calls=%llu retire_checks=%llu (gpu_tot_sim_cycle=%llu)\n",
+      get_sid(), last_retire_check_cycle(), cycle_calls(), retire_checks(),
+      (unsigned long long)m_gpu->gpu_tot_sim_cycle);
+  printf(
+      "GPGPU-Sim uArch DEADLOCK:  core %u last blocked gate: in_pipe=%d "
+      "at_barrier=%d stores_done=%d pending_writes=%d\n",
+      get_sid(), (int)last_block_in_pipe(), (int)last_block_at_barrier(),
+      (int)last_block_stores_done(), (int)last_block_pending_writes());
+}
+
 bool shader_core_ctx::check_if_non_released_reduction_barrier(
     warp_inst_t &inst) {
   unsigned warp_id = inst.warp_id();
@@ -5492,6 +5540,17 @@ void simt_core_cluster::print_not_completed(FILE *fp) const {
     unsigned not_completed = m_core[i]->get_not_completed();
     unsigned sid = m_config->cid_to_sid(i, m_cluster_id);
     fprintf(fp, "%u(%u) ", sid, not_completed);
+  }
+}
+
+// Local diagnostic: dump the barrier state of every core in this cluster that
+// still has unfinished work.
+void simt_core_cluster::dump_barriers() {
+  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++) {
+    if (m_core[i]->get_not_completed() == 0) continue;
+    unsigned sid = m_config->cid_to_sid(i, m_cluster_id);
+    printf("GPGPU-Sim uArch DEADLOCK:  core %u barrier state\n", sid);
+    m_core[i]->dump_barriers();
   }
 }
 

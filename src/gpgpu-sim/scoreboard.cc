@@ -54,6 +54,16 @@ void Scoreboard::printContents() const {
   }
 }
 
+// Local diagnostic: report the pending registers of one warp plus whether each
+// is still tracked as a long-latency operation.
+void Scoreboard::printWarpPendings(unsigned wid) const {
+  printf("  scoreboard wid=%u pending:", wid);
+  for (auto it = reg_table[wid].begin(); it != reg_table[wid].end(); it++)
+    printf(" r%u%s", *it,
+           longopregs[wid].find(*it) != longopregs[wid].end() ? "(long)" : "");
+  printf("\n");
+}
+
 void Scoreboard::reserveRegister(unsigned wid, unsigned regnum) {
   if (!(reg_table[wid].find(regnum) == reg_table[wid].end())) {
     printf(

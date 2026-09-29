@@ -529,14 +529,27 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                        m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
         m_L2_icnt_queue->push(mf);
       } else {
-        if (m_config->m_L2_config.m_write_alloc_policy == FETCH_ON_WRITE) {
+        // The L2 issued a write-allocate read for a store that missed. Once
+        // that fill completes the store is satisfied in the L2, so the
+        // original write request has to be acknowledged back to the core.
+        // This must happen for both write-allocate policies that issue the
+        // read: FETCH_ON_WRITE and LAZY_FETCH_ON_READ. Acknowledging only
+        // FETCH_ON_WRITE leaks the store request counted by inc_store_req()
+        // under LAZY_FETCH_ON_READ, leaving stores_done() false forever so the
+        // warp can never retire.
+        if (m_config->m_L2_config.m_write_alloc_policy == FETCH_ON_WRITE ||
+            m_config->m_L2_config.m_write_alloc_policy ==
+                LAZY_FETCH_ON_READ) {
           mem_fetch *original_wr_mf = mf->get_original_wr_mf();
-          assert(original_wr_mf);
-          original_wr_mf->set_reply();
-          original_wr_mf->set_status(
-              IN_PARTITION_L2_TO_ICNT_QUEUE,
-              m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
-          m_L2_icnt_queue->push(original_wr_mf);
+          if (original_wr_mf != NULL &&
+              original_wr_mf->get_access_type() != L1_WRBK_ACC &&
+              original_wr_mf->get_access_type() != L2_WRBK_ACC) {
+            original_wr_mf->set_reply();
+            original_wr_mf->set_status(
+                IN_PARTITION_L2_TO_ICNT_QUEUE,
+                m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
+            m_L2_icnt_queue->push(original_wr_mf);
+          }
         }
         m_request_tracker.erase(mf);
         delete mf;
@@ -620,6 +633,7 @@ void memory_sub_partition::cache_cycle(unsigned cycle) {
                               events);
         bool write_sent = was_write_sent(events);
         bool read_sent = was_read_sent(events);
+        bool wr_alloc_sent = was_writeallocate_sent(events);
         MEM_SUBPART_DPRINTF("Probing L2 cache Address=%llx, status=%u\n",
                             mf->get_addr(), status);
 

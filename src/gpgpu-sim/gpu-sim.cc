@@ -1560,6 +1560,11 @@ void gpgpu_sim::deadlock_check() {
       }
     }
     printf("\n");
+    // Local diagnostic: dump barrier state of every cluster that still has
+    // unfinished work, so a barrier-related stall is visible directly.
+    for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
+      if (m_cluster[i]->get_not_completed()) m_cluster[i]->dump_barriers();
+    }
     for (unsigned i = 0; i < m_memory_config->m_n_mem; i++) {
       bool busy = m_memory_partition_unit[i]->busy();
       if (busy)

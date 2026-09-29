@@ -49,6 +49,8 @@ class Scoreboard {
   bool checkCollision(unsigned wid, const inst_t *inst) const;
   bool pendingWrites(unsigned wid) const;
   void printContents() const;
+  // Local diagnostic: pending registers of one warp.
+  void printWarpPendings(unsigned wid) const;
   const bool islongop(unsigned warp_id, unsigned regnum);
 
  private:

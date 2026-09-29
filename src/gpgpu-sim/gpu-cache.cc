@@ -255,6 +255,11 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
   unsigned invalid_line = (unsigned)-1;
   unsigned valid_line = (unsigned)-1;
   unsigned long long valid_timestamp = (unsigned)-1;
+  // Last-resort replacement candidate: the least recently used modified line,
+  // used only when every way in the set is reserved or modified and the global
+  // dirty ratio is below the write-ratio limit.
+  unsigned dirty_candidate_line = (unsigned)-1;
+  unsigned long long dirty_candidate_timestamp = (unsigned)-1;
 
   bool all_reserved = true;
   // check for hit or pending hit
@@ -313,8 +318,31 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
             }
           }
         }
+      } else {
+        // The global dirty ratio is below the write-ratio limit, so this
+        // modified line is normally not a replacement candidate. Record it as
+        // a last-resort candidate anyway: the write-ratio limit is a global
+        // heuristic, but allocation failure is per set. Without this fallback a
+        // set whose ways are all modified can never be allocated into, so
+        // probe() returns RESERVATION_FAIL forever and the warp waiting on that
+        // access can never retire. Evicting the least-recently-used dirty line
+        // of a completely dirty set is strictly better than deadlocking.
+        unsigned long long ts = (m_config.m_replacement_policy == FIFO)
+                                    ? line->get_alloc_time()
+                                    : line->get_last_access_time();
+        if (ts < dirty_candidate_timestamp) {
+          dirty_candidate_timestamp = ts;
+          dirty_candidate_line = index;
+        }
       }
     }
+  }
+  if (all_reserved && dirty_candidate_line != (unsigned)-1) {
+    // Every way in this set is reserved or modified with the global dirty ratio
+    // below the write-ratio limit. Fall back to evicting the least recently
+    // used modified line so the set can make progress instead of deadlocking.
+    idx = dirty_candidate_line;
+    return MISS;
   }
   if (all_reserved) {
     assert(m_config.m_alloc_policy == ON_MISS);

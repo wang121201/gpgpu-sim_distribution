@@ -231,6 +231,9 @@ class shd_warp_t {
   bool hardware_done() const;
 
   bool done_exit() const { return m_done_exit; }
+  // Local diagnostic: trace-driven warps report whether their trace is
+  // exhausted. Always false for execution-driven warps.
+  virtual bool trace_exhausted() const { return false; }
   void set_done_exit() { m_done_exit = true; }
 
   // Returns true if warp is in a replay region (trace-driven only)
@@ -349,6 +352,8 @@ class shd_warp_t {
   void clear_imiss_pending() { m_imiss_pending = false; }
 
   bool stores_done() const { return m_stores_outstanding == 0; }
+  // Local diagnostic accessor.
+  unsigned get_stores_outstanding() const { return m_stores_outstanding; }
   void inc_store_req() { m_stores_outstanding++; }
   void dec_store_req() {
     assert(m_stores_outstanding > 0);
@@ -356,6 +361,10 @@ class shd_warp_t {
   }
 
   bool tma_loads_done() const { return m_tma_loads_outstanding == 0; }
+  // Local diagnostic accessor.
+  unsigned get_tma_loads_outstanding() const {
+    return m_tma_loads_outstanding;
+  }
   void inc_tma_load_req() { m_tma_loads_outstanding++; }
   void dec_tma_load_req() {
     assert(m_tma_loads_outstanding > 0);
@@ -2720,7 +2729,16 @@ class shader_core_ctx : public core_t {
 
   // used by simt_core_cluster:
   // modifiers
-  void cycle();
+  virtual void cycle();
+  // Local diagnostic: last cycle at which this core ran the trace retirement
+  // check. Zero for execution-driven cores.
+  virtual unsigned long long last_retire_check_cycle() const { return 0; }
+  virtual unsigned long long cycle_calls() const { return 0; }
+  virtual unsigned long long retire_checks() const { return 0; }
+  virtual bool last_block_in_pipe() const { return false; }
+  virtual bool last_block_at_barrier() const { return false; }
+  virtual bool last_block_stores_done() const { return true; }
+  virtual bool last_block_pending_writes() const { return false; }
   void reinit(unsigned start_thread, unsigned end_thread,
               bool reset_not_completed);
   void issue_block2core(class kernel_info_t &kernel);
@@ -2765,6 +2783,9 @@ class shader_core_ctx : public core_t {
   // used by functional simulation:
   // modifiers
   virtual void warp_exit(unsigned warp_id);
+
+  // Local diagnostic: dump this core's barrier state.
+  void dump_barriers();
 
   // Ni: Unset ldgdepbar
   void unset_depbar(const warp_inst_t &inst);
@@ -3320,6 +3341,9 @@ class simt_core_cluster {
   unsigned max_cta(const kernel_info_t &kernel);
   unsigned get_not_completed() const;
   void print_not_completed(FILE *fp) const;
+  // Local diagnostic: dump the barrier state of every core that still has
+  // unfinished work. Used by gpgpu_sim::deadlock_check().
+  void dump_barriers();
   unsigned get_n_active_cta() const;
   unsigned get_n_active_sms() const;
   gpgpu_sim *get_gpu() { return m_gpu; }
