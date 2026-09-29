@@ -406,6 +406,22 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
       m_sector_miss++;
       shader_cache_access_log(m_core_id, m_type_id, 1);  // log cache misses
       if (m_config.m_alloc_policy == ON_MISS) {
+        // A sector miss on a line that already holds dirty sectors means
+        // allocate_sector() is about to reset this line's per-sector state, so
+        // those dirty sectors must be captured for writeback first. The MISS
+        // path does this; the sector path used to skip it, silently dropping
+        // the dirty data so DRAM write traffic was never generated.
+        //
+        // Capture before allocate_sector() mutates the line. m_dirty is
+        // decremented once below, by the existing before/after check, so do
+        // not also decrement here.
+        if (m_lines[idx]->is_modified_line()) {
+          wb = true;
+          evicted.set_info(m_lines[idx]->m_block_addr,
+                           m_lines[idx]->get_modified_size(),
+                           m_lines[idx]->get_dirty_byte_mask(),
+                           m_lines[idx]->get_dirty_sector_mask());
+        }
         bool before = m_lines[idx]->is_modified_line();
         ((sector_cache_block *)m_lines[idx])
             ->allocate_sector(time, mf->get_access_sector_mask());
@@ -1621,8 +1637,10 @@ enum cache_request_status data_cache::wr_miss_wa_naive(
     // If evicted block is modified and not a write-through
     // (already modified lower level)
     if (wb && (m_config.m_write_policy != WRITE_THROUGH)) {
-      assert(status ==
-             MISS);  // SECTOR_MISS and HIT_RESERVED should not send write back
+      // SECTOR_MISS also reaches here: a sector miss on a line that holds
+      // dirty sectors must write those sectors back before re-allocating them,
+      // otherwise the dirty data is lost and DRAM write traffic is undercounted.
+      assert(status == MISS || status == SECTOR_MISS);
       mem_fetch *wb = m_memfetch_creator->alloc(
           evicted.m_block_addr, m_wrbk_type, mf->get_access_warp_mask(),
           evicted.m_byte_mask, evicted.m_sector_mask, evicted.m_modified_size,
