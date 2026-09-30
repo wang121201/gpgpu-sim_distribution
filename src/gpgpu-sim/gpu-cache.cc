@@ -406,25 +406,28 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
       m_sector_miss++;
       shader_cache_access_log(m_core_id, m_type_id, 1);  // log cache misses
       if (m_config.m_alloc_policy == ON_MISS) {
-        // A sector miss on a line that already holds dirty sectors means
-        // allocate_sector() is about to reset this line's per-sector state, so
-        // those dirty sectors must be captured for writeback first. The MISS
-        // path does this; the sector path used to skip it, silently dropping
-        // the dirty data so DRAM write traffic was never generated.
+        // A sector miss keeps the line (and every other sector in it) in
+        // place; `allocate_sector()` resets exactly the one sector named by
+        // the access mask (see sector_cache_block::allocate_sector()). So the
+        // access sector is the only place dirty data can be lost here and the
+        // only sector that may need writing back.
         //
-        // Capture before allocate_sector() mutates the line. m_dirty is
-        // decremented once below, by the existing before/after check, so do
-        // not also decrement here.
-        if (m_lines[idx]->is_modified_line()) {
+        // Capturing the whole line instead (as this branch used to) is wrong
+        // twice over: the untargeted dirty sectors stay resident and stay
+        // MODIFIED, so they keep being re-collected on every later sector
+        // miss and are eventually written back again, which inflates DRAM
+        // write traffic far beyond the bytes ever written. The MISS path
+        // below is different -- `allocate()` replaces the whole line, so
+        // there the full dirty mask is the correct thing to write back.
+        mem_access_sector_mask_t reset_mask = mf->get_access_sector_mask();
+        if (m_lines[idx]->get_status(reset_mask) == MODIFIED) {
           wb = true;
-          evicted.set_info(m_lines[idx]->m_block_addr,
-                           m_lines[idx]->get_modified_size(),
-                           m_lines[idx]->get_dirty_byte_mask(),
-                           m_lines[idx]->get_dirty_sector_mask());
+          evicted.set_info(m_lines[idx]->m_block_addr, SECTOR_SIZE,
+                           m_lines[idx]->get_dirty_byte_mask(), reset_mask);
         }
         bool before = m_lines[idx]->is_modified_line();
         ((sector_cache_block *)m_lines[idx])
-            ->allocate_sector(time, mf->get_access_sector_mask());
+            ->allocate_sector(time, reset_mask);
         if (before && !m_lines[idx]->is_modified_line()) {
           m_dirty--;
         }
